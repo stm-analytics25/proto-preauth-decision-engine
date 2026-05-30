@@ -24,3 +24,9 @@ Step  What happens
 10 Explode criteria arrays → flat medschm.silver.protocol_criteria_flat (what the engine joins on)
 
 11 Chunk and embed every criterion + ICD-10 + basket item → Databricks Vector Search12Sanity check queries
+
+
+Two output tables the engine uses:
+
+silver.protocol_rules — one row per protocol, fully nested JSON-style
+silver.protocol_criteria_flat — one row per criterion with criteria_tier (mandatory / conditional / rejection), ready for a direct JOIN on (protocol_id, criterion_id)
