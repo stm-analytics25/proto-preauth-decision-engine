@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClinicalPath · Pre-Auth Decision Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@300;400;500;600&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS
+═══════════════════════════════════════════ */
+:root {
+  --void:     #08090b;
+  --deep:     #0e1116;
+  --surface:  #141820;
+  --raised:   #1c2230;
+  --border:   #252e3f;
+  --border2:  #2e3a50;
+  --mist:     #3d4e68;
+  --dim:      #5a6e8a;
+  --sub:      #8194aa;
+  --body:     #c2cdd8;
+  --bright:   #e8edf2;
+  --white:    #f4f7fa;
+
+  --cyan:     #4dd9c0;
+  --cyan-d:   #1e6b5a;
+  --cyan-bg:  #071a16;
+
+  --amber:    #f0b429;
+  --amber-d:  #7a5a0e;
+  --amber-bg: #1a1408;
+
+  --red:      #f0614a;
+  --red-d:    #7a2d1e;
+  --red-bg:   #1a0c08;
+
+  --violet:   #9b8ef5;
+  --violet-d: #4a3ea0;
+  --violet-bg:#10101e;
+
+  --green:    #4dc98a;
+  --green-d:  #1a6040;
+  --green-bg: #071a10;
+
+  --approve:  #4dc98a;
+  --reject:   #f0614a;
+  --refer:    #f0b429;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--void);
+  color: var(--body);
+  font-family: 'Geist', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── NOISE TEXTURE OVERLAY ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: .4;
+}
+
+/* ── SCAN LINE ── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ═══ TOPBAR ═══ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: rgba(8,9,11,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  height: 56px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, var(--cyan), var(--violet));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--void);
+}
+
+.brand-name {
+  font-family: 'Instrument Serif', serif;
+  font-size: 20px;
+  color: var(--white);
+  letter-spacing: -.01em;
+}
+
+.brand-name em { color: var(--cyan); font-style: italic; }
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-pill {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid;
+  letter-spacing: .04em;
+}
+
+.pill-active { border-color: var(--cyan-d); color: var(--cyan); background: var(--cyan-bg); }
+.pill-info   { border-color: var(--border2); color: var(--dim); background: var(--surface); }
+
+/* ═══ MAIN LAYOUT ═══ */
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: calc(100vh - 56px);
+}
+
+/* ═══ SIDEBAR ═══ */
+.sidebar {
+  background: var(--deep);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar-section {
+  padding: 0 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.sidebar-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--mist);
+  margin-bottom: 12px;
+  padding-top: 16px;
+}
+
+/* Upload zone */
+.upload-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: 10px;
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  background: var(--surface);
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-zone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--cyan-bg), transparent);
+  opacity: 0;
+  transition: opacity .2s;
+}
+
+.upload-zone:hover { border-color: var(--cyan); }
+.upload-zone:hover::before { opacity: 1; }
+
+.upload-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.upload-text {
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.5;
+}
+
+.upload-text strong { color: var(--cyan); font-weight: 500; }
+
+input[type=file] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+/* Protocol list */
+.protocol-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .15s;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+
+.protocol-item:hover { background: var(--surface); border-color: var(--border); }
+.protocol-item.active { background: var(--raised); border-color: var(--cyan-d); }
+
+.protocol-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--mist);
+}
+
+.protocol-dot.loaded { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.protocol-dot.active { background: var(--violet); box-shadow: 0 0 6px var(--violet); }
+
+.protocol-name {
+  font-size: 12px;
+  color: var(--body);
+  flex: 1;
+  line-height: 1.4;
+}
+
+.protocol-tag {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--dim);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Stats in sidebar */
+.sidebar-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+
+.stat-mini {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.stat-mini-val {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px;
+  color: var(--bright);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.stat-mini-lbl {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  color: var(--mist);
+  letter-spacing: .04em;
+}
+
+/* ═══ MAIN CONTENT ═══ */
+.main {
+  display: flex;
+  flex-direction: column;
+  background: var(--void);
+}
+
+/* ── STAGE INDICATOR ── */
+.stage-bar {
+  background: var(--deep);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--mist);
+  letter-spacing: .04em;
+}
+
+.stage.active { color: var(--bright); }
+.stage.done { color: var(--cyan); }
+
+.stage-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all .3s;
+}
+
+.stage.active .stage-num { border-color: var(--violet); color: var(--violet); background: var(--violet-bg); box-shadow: 0 0 10px rgba(155,142,245,.3); }
+.stage.done .stage-num { border-color: var(--cyan); background: var(--cyan-bg); color: var(--cyan); }
+
+.stage-arrow {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin: 0 12px;
+  max-width: 60px;
+  position: relative;
+}
+
+.stage.done + .stage-arrow { background: linear-gradient(90deg, var(--cyan-d), var(--border)); }
+
+/* ═══ CONTENT PANELS ═══ */
+.content { flex: 1; padding: 32px; }
+
+/* hide/show stages */
+.stage-panel { display: none; animation: fadeSlide .3s ease; }
+.stage-panel.active { display: block; }
+
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── STAGE 1: Protocol Viewer ── */
+.protocol-view-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.panel-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.panel-card-head {
+  padding: 14px 18px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-card-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+
+.panel-card-body {
+  padding: 18px;
+}
+
+.ocr-text {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--body);
+  white-space: pre-wrap;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+/* decision tree */
+.tree-canvas {
+  min-height: 340px;
+  position: relative;
+}
+
+.tree-node {
+  background: var(--raised);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--body);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative;
+}
+
+.tree-node:hover { border-color: var(--violet); background: var(--violet-bg); }
+.tree-node.root { border-color: var(--cyan-d); background: rgba(77,217,192,.06); }
+.tree-node.condition { border-left: 3px solid var(--amber); }
+.tree-node.action-approve { border-left: 3px solid var(--approve); }
+.tree-node.action-reject  { border-left: 3px solid var(--reject); }
+.tree-node.action-refer   { border-left: 3px solid var(--refer); }
+
+.tree-node-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 4px;
+}
+
+.tree-node-label.lbl-root    { color: var(--cyan); }
+.tree-node-label.lbl-cond    { color: var(--amber); }
+.tree-node-label.lbl-approve { color: var(--approve); }
+.tree-node-label.lbl-reject  { color: var(--reject); }
+.tree-node-label.lbl-refer   { color: var(--refer); }
+
+.tree-branch {
+  margin-left: 24px;
+  border-left: 1px dashed var(--border2);
+  padding-left: 16px;
+  margin-bottom: 4px;
+}
+
+.tree-connector {
+  display: inline-block;
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  color: var(--mist);
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+/* ── STAGE 2: Case Input ── */
+.case-form {
+  max-width: 860px;
+}
+
+.form-section-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 18px;
+  color: var(--bright);
+  margin-bottom: 4px;
+}
+
+.form-section-sub {
+  font-size: 12px;
+  color: var(--sub);
+  margin-bottom: 20px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.field-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.field-full { grid-column: 1 / -1; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+input, select, textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--bright);
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  width: 100%;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px rgba(155,142,245,.1);
+}
+
+textarea { resize: vertical; min-height: 90px; }
+
+select option { background: var(--surface); }
+
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 24px 0;
+}
+
+/* Clinical criteria checklist */
+.criteria-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.criteria-head {
+  padding: 12px 16px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.criteria-head-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.criteria-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
+  cursor: pointer;
+}
+
+.criteria-item:last-child { border-bottom: none; }
+.criteria-item:hover { background: var(--raised); }
+
+.criteria-check {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--border2);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+  cursor: pointer;
+  background: var(--deep);
+}
+
+.criteria-check.checked {
+  background: var(--cyan-bg);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  font-size: 11px;
+}
+
+.criteria-check.na {
+  background: var(--amber-bg);
+  border-color: var(--amber-d);
+  color: var(--amber);
+  font-size: 10px;
+}
+
+.criteria-text { flex: 1; font-size: 13px; color: var(--body); line-height: 1.5; }
+.criteria-required {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--red-d);
+  color: var(--red);
+  background: var(--red-bg);
+  white-space: nowrap;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* ── STAGE 3: Decision Engine ── */
+.engine-running {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 24px;
+}
+
+.engine-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--violet);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  animation: pulse 1.5s ease-in-out infinite;
+  background: var(--violet-bg);
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(155,142,245,.4); }
+  50%       { box-shadow: 0 0 0 16px rgba(155,142,245,0); }
+}
+
+.engine-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px;
+  color: var(--bright);
+  text-align: center;
+}
+
+.engine-sub {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  color: var(--sub);
+  text-align: center;
+}
+
+/* Decision trace log */
+.trace-log {
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  line-height: 2;
+  color: var(--dim);
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 16px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.trace-log .t-pass { color: var(--cyan); }
+.trace-log .t-fail { color: var(--red); }
+.trace-log .t-warn { color: var(--amber); }
+.trace-log .t-info { color: var(--violet); }
+
+/* ── STAGE 4: Decision Output ── */
+.decision-output { max-width: 800px; }
+
+.decision-banner {
+  border-radius: 14px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.decision-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, currentColor 0%, transparent 60%);
+  opacity: .06;
+}
+
+.decision-banner.approve { background: var(--green-bg); border: 1.5px solid var(--green-d); }
+.decision-banner.reject  { background: var(--red-bg);   border: 1.5px solid var(--red-d);   }
+.decision-banner.refer   { background: var(--amber-bg); border: 1.5px solid var(--amber-d); }
+
+.decision-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.approve .decision-icon { background: rgba(77,201,138,.15); border: 1.5px solid var(--green-d); }
+.reject  .decision-icon { background: rgba(240,97,74,.15);  border: 1.5px solid var(--red-d); }
+.refer   .decision-icon { background: rgba(240,180,41,.15); border: 1.5px solid var(--amber-d); }
+
+.decision-verdict {
+  flex: 1;
+}
+
+.decision-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.approve .decision-label { color: var(--green); }
+.reject  .decision-label { color: var(--red); }
+.refer   .decision-label { color: var(--amber); }
+
+.decision-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 28px;
+  color: var(--white);
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.decision-ref {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+}
+
+.confidence-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.approve .confidence-chip { background: rgba(77,201,138,.2); color: var(--approve); border: 1px solid var(--green-d); }
+.reject  .confidence-chip { background: rgba(240,97,74,.2);  color: var(--reject);  border: 1px solid var(--red-d); }
+.refer   .confidence-chip { background: rgba(240,180,41,.2); color: var(--refer);   border: 1px solid var(--amber-d); }
+
+/* Decision detail cards */
+.decision-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.detail-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.detail-card-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--mist);
+  margin-bottom: 8px;
+}
+
+.detail-card-value {
+  font-size: 13px;
+  color: var(--bright);
+  line-height: 1.6;
+}
+
+/* Criteria results */
+.criteria-result-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.criteria-result-row:last-child { border-bottom: none; }
+
+.cr-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.cr-text { flex: 1; color: var(--body); line-height: 1.5; }
+.cr-weight {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* Rationale block */
+.rationale-block {
+  background: var(--deep);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.rationale-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--sub);
+  margin-bottom: 12px;
+}
+
+.rationale-text {
+  font-family: 'Instrument Serif', serif;
+  font-size: 15px;
+  color: var(--bright);
+  line-height: 1.8;
+  font-style: italic;
+}
+
+/* Action buttons */
+.action-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--violet);
+  border-color: var(--violet);
+  color: var(--void);
+}
+
+.btn-primary:hover { opacity: .85; transform: translateY(-1px); }
+
+.btn-approve { background: var(--green-bg); border-color: var(--green-d); color: var(--approve); }
+.btn-reject  { background: var(--red-bg);   border-color: var(--red-d);   color: var(--reject); }
+.btn-refer   { background: var(--amber-bg); border-color: var(--amber-d); color: var(--refer); }
+.btn-ghost   { background: transparent; border-color: var(--border2); color: var(--sub); }
+
+.btn:hover { opacity: .85; }
+
+/* ── DECISION TRACE (full) ── */
+.trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 20px;
+}
+
+.trace-table th {
+  text-align: left;
+  padding: 8px 14px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--border);
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.trace-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--body);
+}
+
+.trace-table tr:last-child td { border-bottom: none; }
+.trace-table tr:hover td { background: var(--raised); }
+
+.trace-pass { color: var(--cyan);  }
+.trace-fail { color: var(--red);   }
+.trace-warn { color: var(--amber); }
+.trace-na   { color: var(--mist);  }
+
+/* ── PAGE HEADER ── */
+.page-header {
+  margin-bottom: 28px;
+}
+
+.page-eyebrow {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 1px;
+  background: var(--cyan);
+}
+
+.page-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--white);
+  line-height: 1.15;
+  letter-spacing: -.01em;
+  margin-bottom: 6px;
+}
+
+.page-title em { color: var(--violet); font-style: italic; }
+
+.page-sub {
+  font-size: 13px;
+  color: var(--sub);
+}
+
+/* ── BADGE ── */
+.badge {
+  display: inline-block;
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid;
+  letter-spacing: .04em;
+  font-weight: 500;
+}
+
+.badge-cyan   { background: var(--cyan-bg);   color: var(--cyan);   border-color: var(--cyan-d);   }
+.badge-violet { background: var(--violet-bg); color: var(--violet); border-color: var(--violet-d); }
+.badge-amber  { background: var(--amber-bg);  color: var(--amber);  border-color: var(--amber-d);  }
+.badge-red    { background: var(--red-bg);    color: var(--red);    border-color: var(--red-d);    }
+.badge-green  { background: var(--green-bg);  color: var(--green);  border-color: var(--green-d);  }
+.badge-gray   { background: var(--surface);   color: var(--dim);    border-color: var(--border2);  }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--mist); border-radius: 2px; }
+
+/* ── responsive ── */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; }
+  .protocol-view-grid { grid-template-columns: 1fr; }
+  .field-grid-3 { grid-template-columns: 1fr 1fr; }
+  .decision-detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">CP</div>
+    <div class="brand-name">Clinical<em>Path</em></div>
+  </div>
+  <div class="topbar-right">
+    <span class="status-pill pill-active">● Engine Ready</span>
+    <span class="status-pill pill-info">MedSchm · STMpha PA</span>
+    <span class="status-pill pill-info">Analyst: K. Mokoena</span>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar">
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Upload Protocol Files</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" multiple accept=".txt,.pdf,.docx" onchange="handleUpload(event)">
+        <span class="upload-icon">⬆</span>
+        <div class="upload-text"><strong>Drop OCR text files</strong><br>or click to browse<br><span style="font-size:10px;opacity:.6">.txt · .pdf · .docx</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="flex:1">
+      <div class="sidebar-label">Loaded Protocols <span class="badge badge-cyan" style="margin-left:4px">4</span></div>
+
+      <div class="protocol-item active" onclick="selectProtocol(this, 'asthma')">
+        <span class="protocol-dot loaded"></span>
+        <span class="protocol-name">Asthma Management Protocol</span>
+        <span class="protocol-tag">GP</span>
+      </div>
+      <div class="protocol-item" onclick="selectProtocol(this, 'diabetes')">
+        <span class="protocol-dot loaded"></span>
+        <span class="protocol-name">Type 2 Diabetes — Insulin Initiation</span>
+        <span class="protocol-tag">Endo</span>
+      </div>
+      <div class="protocol-item" onclick="selectProtocol(this, 'oncology')">
+        <span class="protocol-dot active"></span>
+        <span class="protocol-name">Oncology — Biological Therapy</span>
+        <span class="protocol-tag">Onco</span>
+      </div>
+      <div class="protocol-item" onclick="selectProtocol(this, 'ortho')">
+        <span class="protocol-dot loaded"></span>
+        <span class="protocol-name">Knee Arthroplasty Pre-Auth</span>
+        <span class="protocol-tag">Ortho</span>
+      </div>
+
+      <div style="padding:12px 0 0">
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px" onclick="showStage(1)">
+          ＋ New Pre-Auth Request
+        </button>
+      </div>
+    </div>
+
+    <div class="sidebar-stats">
+      <div class="stat-mini">
+        <div class="stat-mini-val" style="color:var(--approve)">142</div>
+        <div class="stat-mini-lbl">Approved today</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val" style="color:var(--reject)">23</div>
+        <div class="stat-mini-lbl">Rejected today</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val" style="color:var(--refer)">18</div>
+        <div class="stat-mini-lbl">Referred today</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val">94%</div>
+        <div class="stat-mini-lbl">Auto-decision rate</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main">
+
+    <!-- STAGE BAR -->
+    <div class="stage-bar">
+      <div class="stage done" id="stg-1"><div class="stage-num">✓</div>Protocol</div>
+      <div class="stage-arrow"></div>
+      <div class="stage active" id="stg-2"><div class="stage-num">2</div>Case Details</div>
+      <div class="stage-arrow"></div>
+      <div class="stage" id="stg-3"><div class="stage-num">3</div>Engine</div>
+      <div class="stage-arrow"></div>
+      <div class="stage" id="stg-4"><div class="stage-num">4</div>Decision</div>
+    </div>
+
+    <div class="content">
+
+      <!-- ══ STAGE 1: Protocol Viewer ══ -->
+      <div id="stage-1" class="stage-panel">
+        <div class="page-header">
+          <div class="page-eyebrow">Step 1</div>
+          <div class="page-title">Protocol <em>Review</em></div>
+          <div class="page-sub">Review the parsed OCR protocol text and the auto-generated decision tree structure before processing a case.</div>
+        </div>
+
+        <div class="protocol-view-grid">
+          <div class="panel-card">
+            <div class="panel-card-head">
+              <span class="panel-card-title">OCR Source Text</span>
+              <span class="badge badge-cyan">Oncology — Biological Therapy</span>
+            </div>
+            <div class="panel-card-body">
+              <div class="ocr-text" id="ocrTextDisplay">PROTOCOL: BIOLOGICAL THERAPY FOR ONCOLOGY
+Version 3.2 | Effective: 2024-01-01
+Issuing Body: STMpha Clinical Advisory Board
+
+1. SCOPE
+This protocol governs pre-authorisation decisions for
+biological and targeted therapy agents in oncology,
+including but not limited to: monoclonal antibodies,
+tyrosine kinase inhibitors (TKIs), immune checkpoint
+inhibitors, and CAR-T cell therapies.
+
+2. ELIGIBILITY CRITERIA
+2.1 MANDATORY (all must be met):
+  a) Confirmed histological or cytological diagnosis
+     of malignancy (ICD-O-3 code required)
+  b) ECOG Performance Status 0–2
+  c) Adequate organ function:
+     — Creatinine ≤ 1.5× ULN
+     — ALT/AST ≤ 3× ULN (≤5× if hepatic mets)
+     — ANC ≥ 1.0 × 10⁹/L
+     — Platelets ≥ 75 × 10⁹/L
+  d) Prior treatment failure or contraindication
+     to standard first-line therapy (evidence required)
+  e) Treating physician is a registered oncologist
+     (HPCSA-registered, sub-specialty oncology)
+  f) Treatment aligned to NCCN/ESMO guideline
+     category 1 or 2A recommendation
+
+2.2 CONDITIONAL (triggers Medical Advisor referral):
+  a) ECOG Performance Status = 3
+  b) Organ function outside range but within
+     protocol-defined exception thresholds
+  c) Off-label indication (requires motivation letter)
+  d) Prior biological therapy failure (>2 lines)
+
+2.3 REJECTION CRITERIA (any one triggers rejection):
+  a) ECOG Performance Status ≥ 4
+  b) No confirmed malignancy diagnosis
+  c) Non-oncologist treating physician
+  d) Experimental/trial-phase agent not on formulary
+  e) Organ function critically outside threshold with
+     no exception motivation provided
+
+3. DOCUMENTATION REQUIRED
+  — Histology/cytology report (within 12 months)
+  — Recent bloods (within 30 days)
+  — Oncologist treatment plan letter
+  — Prior treatment history
+  — Biomarker/genomic test results (where applicable)
+
+4. VALIDITY PERIOD
+  Authorisation valid for one treatment cycle
+  (max 6 weeks). Renewal requires updated bloods.
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-card-head">
+              <span class="panel-card-title">Auto-Generated Decision Tree</span>
+              <span class="badge badge-violet">AI Parsed</span>
+            </div>
+            <div class="panel-card-body">
+              <div class="tree-canvas">
+                <div class="tree-node root">
+                  <div class="tree-node-label lbl-root">Entry Point</div>
+                  Biological Therapy Pre-Auth Request Received
+                </div>
+
+                <div class="tree-branch">
+                  <div class="tree-connector">Check: Rejection Criteria</div>
+                  <div class="tree-node condition">
+                    <div class="tree-node-label lbl-cond">Condition</div>
+                    Any rejection criterion met? (ECOG ≥ 4, no diagnosis, non-oncologist, non-formulary agent)
+                  </div>
+                  <div class="tree-branch">
+                    <div class="tree-connector">YES → immediate</div>
+                    <div class="tree-node action-reject">
+                      <div class="tree-node-label lbl-reject">Outcome</div>
+                      REJECT — Generate rejection letter with clinical rationale
+                    </div>
+                  </div>
+                  <div class="tree-branch">
+                    <div class="tree-connector">NO → continue</div>
+                    <div class="tree-node condition">
+                      <div class="tree-node-label lbl-cond">Condition</div>
+                      All mandatory criteria (2.1a–f) satisfied with documentation?
+                    </div>
+                    <div class="tree-branch">
+                      <div class="tree-connector">YES, no conditional flags</div>
+                      <div class="tree-node action-approve">
+                        <div class="tree-node-label lbl-approve">Outcome</div>
+                        APPROVE — Issue auth for one cycle (max 6 weeks)
+                      </div>
+                    </div>
+                    <div class="tree-branch">
+                      <div class="tree-connector">YES, but conditional flags present</div>
+                      <div class="tree-node action-refer">
+                        <div class="tree-node-label lbl-refer">Outcome</div>
+                        REFER TO MEDICAL ADVISOR — Document flags, attach motivation
+                      </div>
+                    </div>
+                    <div class="tree-branch">
+                      <div class="tree-connector">NO — missing docs</div>
+                      <div class="tree-node action-reject">
+                        <div class="tree-node-label lbl-reject">Outcome</div>
+                        REJECT — Request outstanding documentation
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="showStage(2)">Proceed to Case Entry →</button>
+          <button class="btn btn-ghost">Edit Decision Tree</button>
+          <button class="btn btn-ghost">Export Tree as JSON</button>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 2: Case Details ══ -->
+      <div id="stage-2" class="stage-panel active">
+        <div class="page-header">
+          <div class="page-eyebrow">Step 2 · Oncology — Biological Therapy</div>
+          <div class="page-title">Case <em>Details</em></div>
+          <div class="page-sub">Complete the clinical and administrative details for this pre-authorisation request. Fields map directly to the protocol criteria.</div>
+        </div>
+
+        <div class="case-form">
+
+          <!-- Member & Provider -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Member &amp; Provider</span>
+              <span class="badge badge-gray">Administrative</span>
+            </div>
+            <div style="padding:16px">
+              <div class="field-grid">
+                <div class="field">
+                  <label>Member ID</label>
+                  <input type="text" value="MBR-00312" placeholder="MBR-XXXXX">
+                </div>
+                <div class="field">
+                  <label>Member Name</label>
+                  <input type="text" value="T.R. Sithole" placeholder="Full name">
+                </div>
+                <div class="field">
+                  <label>Scheme</label>
+                  <select>
+                    <option selected>MedSchm Classic</option>
+                    <option>MedSchm Saver</option>
+                    <option>MedSchm Essential</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Date of Birth</label>
+                  <input type="date" value="1968-03-14">
+                </div>
+                <div class="field">
+                  <label>Treating Physician</label>
+                  <input type="text" value="Dr. N. Maharaj" placeholder="Full name">
+                </div>
+                <div class="field">
+                  <label>HPCSA Number</label>
+                  <input type="text" value="MP0198234" placeholder="MP0000000">
+                </div>
+                <div class="field">
+                  <label>Discipline / Sub-specialty</label>
+                  <select>
+                    <option selected>Medical Oncology</option>
+                    <option>Surgical Oncology</option>
+                    <option>Radiation Oncology</option>
+                    <option>Haematology</option>
+                    <option>General Practitioner</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Practice Number</label>
+                  <input type="text" value="PR-0091244" placeholder="PR-XXXXXXX">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Clinical Info -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Clinical Information</span>
+              <span class="badge badge-violet">Protocol Section 2</span>
+            </div>
+            <div style="padding:16px">
+              <div class="field-grid field-grid-3">
+                <div class="field">
+                  <label>ICD-O-3 Diagnosis Code</label>
+                  <input type="text" value="C50.1" placeholder="ICD-O-3 code">
+                </div>
+                <div class="field">
+                  <label>Diagnosis Description</label>
+                  <input type="text" value="Breast carcinoma, upper outer quadrant">
+                </div>
+                <div class="field">
+                  <label>ECOG Performance Status</label>
+                  <select>
+                    <option value="0">0 — Fully active</option>
+                    <option value="1" selected>1 — Restricted but ambulatory</option>
+                    <option value="2">2 — Ambulatory, self-care only</option>
+                    <option value="3">3 — Limited self-care</option>
+                    <option value="4">4 — Completely disabled</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Requested Agent / Drug</label>
+                  <input type="text" value="Trastuzumab (Herceptin) 6mg/kg" placeholder="Drug name and dose">
+                </div>
+                <div class="field">
+                  <label>NAPPI Code</label>
+                  <input type="text" value="714882001" placeholder="NAPPI code">
+                </div>
+                <div class="field">
+                  <label>Treatment Line</label>
+                  <select>
+                    <option selected>1st Line</option>
+                    <option>2nd Line</option>
+                    <option>3rd Line</option>
+                    <option>4th Line or beyond</option>
+                    <option>Adjuvant</option>
+                    <option>Neoadjuvant</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Guideline Category</label>
+                  <select>
+                    <option selected>NCCN Category 1</option>
+                    <option>NCCN Category 2A</option>
+                    <option>ESMO Grade A</option>
+                    <option>Off-label with motivation</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Biomarker Status</label>
+                  <input type="text" value="HER2+++ (IHC 3+)" placeholder="e.g. HER2+, EGFR mut">
+                </div>
+                <div class="field">
+                  <label>Requested Cycles</label>
+                  <input type="number" value="6" min="1" max="24">
+                </div>
+              </div>
+
+              <div class="field" style="margin-top:8px">
+                <label>Clinical Motivation / Notes</label>
+                <textarea>HER2-positive invasive ductal carcinoma, confirmed on core biopsy. Patient has completed neoadjuvant AC x4 followed by Taxol x4. Now requesting adjuvant Herceptin for 12 months per NCCN guidelines. ECHO confirms LVEF 65%. Bloods within normal limits. No prior biological therapy.</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Organ Function -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Organ Function — Recent Bloods (within 30 days)</span>
+              <span class="badge badge-amber">Protocol Section 2.1c</span>
+            </div>
+            <div style="padding:16px">
+              <div class="field-grid field-grid-3">
+                <div class="field">
+                  <label>Creatinine (µmol/L)</label>
+                  <input type="number" value="82" placeholder="ULN ≤ 1.5×">
+                </div>
+                <div class="field">
+                  <label>ALT (U/L)</label>
+                  <input type="number" value="28" placeholder="ULN ≤ 3×">
+                </div>
+                <div class="field">
+                  <label>AST (U/L)</label>
+                  <input type="number" value="31" placeholder="ULN ≤ 3×">
+                </div>
+                <div class="field">
+                  <label>ANC (× 10⁹/L)</label>
+                  <input type="number" value="2.4" step="0.1" placeholder="≥ 1.0">
+                </div>
+                <div class="field">
+                  <label>Platelets (× 10⁹/L)</label>
+                  <input type="number" value="198" placeholder="≥ 75">
+                </div>
+                <div class="field">
+                  <label>Blood Date</label>
+                  <input type="date" value="2024-06-01">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Criteria Checklist -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Mandatory Criteria Checklist — Section 2.1</span>
+              <span class="badge badge-red">All required</span>
+            </div>
+
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1a · Confirmed histological or cytological diagnosis of malignancy with ICD-O-3 code</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1b · ECOG Performance Status 0–2 confirmed</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1c · Adequate organ function — all blood parameters within protocol thresholds</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1d · Prior treatment failure or contraindication to standard first-line therapy (evidence provided)</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1e · Treating physician is HPCSA-registered oncologist (sub-specialty oncology)</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">2.1f · Treatment aligned to NCCN Category 1 or 2A / ESMO recommendation</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+          </div>
+
+          <!-- Conditional -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Conditional Criteria — Section 2.2 (triggers Medical Advisor referral if checked)</span>
+              <span class="badge badge-amber">Advisory</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check">·</div>
+              <span class="criteria-text">2.2a · ECOG Performance Status = 3</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check">·</div>
+              <span class="criteria-text">2.2b · Organ function outside range but within protocol exception thresholds</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check">·</div>
+              <span class="criteria-text">2.2c · Off-label indication (motivation letter attached)</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check">·</div>
+              <span class="criteria-text">2.2d · Prior biological therapy failure — more than 2 prior lines of biological therapy</span>
+            </div>
+          </div>
+
+          <!-- Documents -->
+          <div class="criteria-group">
+            <div class="criteria-head">
+              <span class="criteria-head-title">Supporting Documents — Section 3</span>
+              <span class="badge badge-violet">Required</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">Histology / cytology report (within 12 months)</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">Recent bloods (within 30 days)</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">Oncologist treatment plan letter</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">Prior treatment history documentation</span>
+              <span class="criteria-required">MANDATORY</span>
+            </div>
+            <div class="criteria-item" onclick="toggleCriteria(this)">
+              <div class="criteria-check checked">✓</div>
+              <span class="criteria-text">Biomarker / genomic test results (HER2, BRCA, MSI where applicable)</span>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn btn-primary" onclick="runEngine()">Run Decision Engine ⚡</button>
+            <button class="btn btn-ghost" onclick="showStage(1)">← Back to Protocol</button>
+            <button class="btn btn-ghost">Save Draft</button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ══ STAGE 3: Engine Running ══ -->
+      <div id="stage-3" class="stage-panel">
+        <div class="engine-running">
+          <div class="engine-icon" id="engineIcon">⚡</div>
+          <div>
+            <div class="engine-title">Decision Engine Processing</div>
+            <div class="engine-sub" id="engineStatus">Initialising protocol rules…</div>
+          </div>
+          <div class="trace-log" id="traceLog">
+            <span class="t-info">▸ Protocol loaded: Oncology — Biological Therapy v3.2</span><br>
+            <span class="t-info">▸ Case: MBR-00312 · T.R. Sithole · 2024-06-14</span><br>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 4: Decision Output ══ -->
+      <div id="stage-4" class="stage-panel">
+        <div class="page-header">
+          <div class="page-eyebrow">Step 4 · Decision Output</div>
+          <div class="page-title">Pre-Auth <em>Decision</em></div>
+          <div class="page-sub">Engine decision for MBR-00312 · T.R. Sithole · Trastuzumab (Herceptin) 6mg/kg</div>
+        </div>
+
+        <div class="decision-output">
+
+          <!-- VERDICT BANNER -->
+          <div class="decision-banner approve" id="decisionBanner">
+            <div class="decision-icon">✓</div>
+            <div class="decision-verdict">
+              <div class="decision-label">Pre-Authorisation Decision</div>
+              <div class="decision-title" id="decisionTitle">Approved</div>
+              <div class="decision-ref" id="decisionRef">Auth Ref: PA-2024-0042817-0089 · Generated: 2024-06-14 14:32 · Valid: 6 weeks</div>
+            </div>
+            <div class="confidence-chip" id="confidenceChip">Confidence: 98%</div>
+          </div>
+
+          <!-- DETAIL CARDS -->
+          <div class="decision-detail-grid">
+            <div class="detail-card">
+              <div class="detail-card-label">Member &amp; Scheme</div>
+              <div class="detail-card-value">T.R. Sithole (MBR-00312)<br>MedSchm Classic · DOB 1968-03-14</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Treating Oncologist</div>
+              <div class="detail-card-value">Dr. N. Maharaj · MP0198234<br>Medical Oncology · PR-0091244</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Approved Treatment</div>
+              <div class="detail-card-value">Trastuzumab (Herceptin) 6mg/kg IV<br>NAPPI: 714882001 · 6 cycles</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Diagnosis</div>
+              <div class="detail-card-value">C50.1 — Breast carcinoma, upper outer quadrant<br>HER2+++ (IHC 3+) · NCCN Category 1</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">ECOG / Performance</div>
+              <div class="detail-card-value">ECOG 1 — Restricted but ambulatory<br><span style="color:var(--approve)">✓ Within protocol threshold</span></div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Organ Function</div>
+              <div class="detail-card-value">
+                Creatinine: 82 µmol/L <span style="color:var(--approve)">✓</span><br>
+                ALT: 28 U/L <span style="color:var(--approve)">✓</span> · AST: 31 U/L <span style="color:var(--approve)">✓</span><br>
+                ANC: 2.4 · Platelets: 198 <span style="color:var(--approve)">✓</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RATIONALE -->
+          <div class="rationale-block">
+            <div class="rationale-title">Clinical Rationale — Auto-Generated</div>
+            <div class="rationale-text" id="rationaleText">
+              "All six mandatory criteria under Protocol Section 2.1 are satisfied. The treating physician is a registered medical oncologist (HPCSA MP0198234) with confirmed sub-specialty. Diagnosis is histologically confirmed HER2-positive invasive ductal carcinoma (C50.1). ECOG performance status of 1 is within the protocol threshold of 0–2. All organ function parameters are within normal protocol limits based on bloods dated 2024-06-01 (within the required 30-day window). Treatment is aligned to NCCN Category 1 guidelines for adjuvant HER2-positive breast cancer. No conditional criteria (Section 2.2) were flagged. Full documentation set is present. Decision: APPROVE."
+            </div>
+          </div>
+
+          <!-- CRITERIA TRACE TABLE -->
+          <div class="panel-card" style="margin-bottom:20px">
+            <div class="panel-card-head">
+              <span class="panel-card-title">Decision Trace — Criteria Evaluation</span>
+              <span class="badge badge-green">6/6 Mandatory Met · 0/4 Conditional Triggered</span>
+            </div>
+            <div class="panel-card-body" style="padding:0">
+              <table class="trace-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Criteria</th>
+                    <th>Value / Evidence</th>
+                    <th>Result</th>
+                    <th>Weight</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1a</td>
+                    <td>Confirmed malignancy diagnosis (ICD-O-3)</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">C50.1 · Histology report present</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">Critical</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1b</td>
+                    <td>ECOG Performance Status 0–2</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">ECOG 1</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">Critical</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1c</td>
+                    <td>Adequate organ function — all parameters</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">Creatinine 82 · ALT 28 · AST 31 · ANC 2.4 · Plt 198</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">Critical</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1d</td>
+                    <td>Prior treatment failure / contraindication documented</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">Treatment history attached · AC×4 → Taxol×4</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">High</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1e</td>
+                    <td>Registered oncologist (HPCSA sub-specialty)</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">MP0198234 · Medical Oncology · Verified</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">Critical</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-pass" style="font-family:'Geist Mono',monospace;font-size:11px">2.1f</td>
+                    <td>Aligned to NCCN/ESMO Cat 1 or 2A guideline</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">NCCN Category 1 · Adjuvant HER2+ breast cancer</td>
+                    <td><span class="badge badge-green">✓ PASS</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">High</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-na" style="font-family:'Geist Mono',monospace;font-size:11px">2.2a–d</td>
+                    <td>Conditional criteria (ECOG 3, off-label, &gt;2 bio lines)</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">None triggered</td>
+                    <td><span class="badge badge-gray">— N/A</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">—</td>
+                  </tr>
+                  <tr>
+                    <td class="trace-na" style="font-family:'Geist Mono',monospace;font-size:11px">2.3a–e</td>
+                    <td>Rejection criteria check</td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--sub)">No rejection criteria met</td>
+                    <td><span class="badge badge-green">✓ CLEAR</span></td>
+                    <td style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--dim)">Critical</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ACTION ROW -->
+          <div class="action-row">
+            <button class="btn btn-approve" onclick="finalise('approve')">✓ Confirm &amp; Issue Auth</button>
+            <button class="btn btn-refer"   onclick="finalise('refer')">⇄ Override — Refer to Medical Advisor</button>
+            <button class="btn btn-reject"  onclick="finalise('reject')">✕ Override — Reject</button>
+            <button class="btn btn-ghost" onclick="window.print()">🖨 Print Decision</button>
+          </div>
+
+          <!-- Post-finalise message -->
+          <div id="finaliseMsg" style="display:none;margin-top:20px;padding:16px 20px;background:var(--green-bg);border:1px solid var(--green-d);border-radius:10px;font-size:13px;color:var(--approve)">
+            ✓ Auth issued · Reference: PA-2024-0042817-0089 · Member and treating oncologist notified · Case file updated in FCM.
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div><!-- /app -->
+
+<script>
+/* ─── STAGE NAVIGATION ─── */
+let currentStage = 2;
+
+function showStage(n) {
+  document.querySelectorAll('.stage-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('stage-' + n).classList.add('active');
+
+  document.querySelectorAll('.stage').forEach((s, i) => {
+    s.classList.remove('active', 'done');
+    if (i + 1 < n)  s.classList.add('done');
+    if (i + 1 === n) s.classList.add('active');
+    // update the stage-num for done stages
+    const num = s.querySelector('.stage-num');
+    if (i + 1 < n) num.textContent = '✓';
+    else num.textContent = i + 1;
+  });
+
+  currentStage = n;
+}
+
+/* ─── PROTOCOL SELECTION ─── */
+function selectProtocol(el, id) {
+  document.querySelectorAll('.protocol-item').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  showStage(1);
+}
+
+/* ─── FILE UPLOAD ─── */
+function handleUpload(e) {
+  const files = e.target.files;
+  if (!files.length) return;
+  Array.from(files).forEach(f => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const ocr = document.getElementById('ocrTextDisplay');
+      if (ocr) ocr.textContent = ev.target.result;
+    };
+    reader.readAsText(f);
+  });
+  showStage(1);
+}
+
+/* ─── CRITERIA TOGGLE ─── */
+function toggleCriteria(item) {
+  const box = item.querySelector('.criteria-check');
+  if (box.classList.contains('checked')) {
+    box.classList.remove('checked');
+    box.textContent = '·';
+  } else {
+    box.classList.add('checked');
+    box.textContent = '✓';
+  }
+}
+
+/* ─── ENGINE RUN ─── */
+const traceLines = [
+  ['info',  '▸ Loading protocol rules: Oncology — Biological Therapy v3.2'],
+  ['info',  '▸ Case subject: MBR-00312 · T.R. Sithole'],
+  ['pass',  '✓ 2.1a · Malignancy diagnosis — C50.1 confirmed · histology present'],
+  ['pass',  '✓ 2.1b · ECOG 1 — within threshold 0–2'],
+  ['pass',  '✓ 2.1c · Organ function — Creatinine 82 · ALT 28 · AST 31 · ANC 2.4 · Plt 198'],
+  ['pass',  '✓ 2.1d · Prior treatment history documented (AC×4 Taxol×4)'],
+  ['pass',  '✓ 2.1e · HPCSA MP0198234 verified — Medical Oncology sub-specialty'],
+  ['pass',  '✓ 2.1f · NCCN Category 1 — adjuvant HER2+ breast · aligned'],
+  ['info',  '▸ Evaluating conditional criteria (2.2a–d)…'],
+  ['pass',  '✓ 2.2 · No conditional flags triggered'],
+  ['pass',  '✓ 2.3 · No rejection criteria met'],
+  ['pass',  '▸ Documents: all 5 mandatory documents present'],
+  ['info',  '▸ Computing decision confidence…'],
+  ['pass',  '■ DECISION: APPROVE · Confidence 98% · Auth valid 6 weeks'],
+];
+
+const statusMessages = [
+  'Initialising protocol rules…',
+  'Parsing case criteria…',
+  'Evaluating mandatory criteria…',
+  'Checking organ function parameters…',
+  'Verifying physician credentials…',
+  'Scanning for rejection triggers…',
+  'Evaluating conditional flags…',
+  'Assessing documentation completeness…',
+  'Computing decision confidence score…',
+  'Finalising decision…',
+];
+
+function runEngine() {
+  showStage(3);
+  const log = document.getElementById('traceLog');
+  const statusEl = document.getElementById('engineStatus');
+  const icon = document.getElementById('engineIcon');
+  log.innerHTML = '';
+
+  let lineIdx = 0;
+  let statusIdx = 0;
+
+  const statusInterval = setInterval(() => {
+    if (statusIdx < statusMessages.length) {
+      statusEl.textContent = statusMessages[statusIdx++];
+    }
+  }, 280);
+
+  const lineInterval = setInterval(() => {
+    if (lineIdx < traceLines.length) {
+      const [type, text] = traceLines[lineIdx++];
+      const cls = type === 'pass' ? 't-pass' : type === 'fail' ? 't-fail' : type === 'warn' ? 't-warn' : 't-info';
+      log.innerHTML += `<span class="${cls}">${text}</span><br>`;
+      log.scrollTop = log.scrollHeight;
+    } else {
+      clearInterval(lineInterval);
+      clearInterval(statusInterval);
+      icon.textContent = '✓';
+      icon.style.borderColor = 'var(--approve)';
+      icon.style.background = 'var(--green-bg)';
+      icon.style.animation = 'none';
+      statusEl.textContent = 'Decision complete.';
+      setTimeout(() => showStage(4), 800);
+    }
+  }, 220);
+}
+
+/* ─── FINALISE ─── */
+function finalise(type) {
+  const banner   = document.getElementById('decisionBanner');
+  const title    = document.getElementById('decisionTitle');
+  const ref      = document.getElementById('decisionRef');
+  const chip     = document.getElementById('confidenceChip');
+  const rationale = document.getElementById('rationaleText');
+  const icon     = banner.querySelector('.decision-icon');
+  const msg      = document.getElementById('finaliseMsg');
+
+  banner.className = 'decision-banner ' + type;
+
+  if (type === 'approve') {
+    title.textContent = 'Approved';
+    icon.textContent = '✓';
+    chip.textContent = 'Confidence: 98%';
+    ref.textContent = 'Auth Ref: PA-2024-0042817-0089 · Generated: 2024-06-14 · Valid: 6 weeks';
+    rationale.textContent = '"All mandatory criteria satisfied. No conditional flags triggered. Decision confirmed: APPROVE. Auth issued for one treatment cycle (6 weeks). Renewal requires updated bloods."';
+    msg.style.display = 'block';
+    msg.style.background = 'var(--green-bg)';
+    msg.style.borderColor = 'var(--green-d)';
+    msg.style.color = 'var(--approve)';
+    msg.textContent = '✓ Auth issued · Reference: PA-2024-0042817-0089 · Member and treating oncologist notified · Case file updated.';
+  } else if (type === 'reject') {
+    title.textContent = 'Rejected';
+    icon.textContent = '✕';
+    chip.textContent = 'Override: Analyst';
+    ref.textContent = 'Rejection Ref: REJ-2024-0042817-0089 · 2024-06-14 · Rejection letter generated';
+    rationale.textContent = '"Pre-authorisation rejected by analyst override. A rejection letter citing the applicable protocol criteria has been generated and will be sent to the treating oncologist and member within 2 business days."';
+    msg.style.display = 'block';
+    msg.style.background = 'var(--red-bg)';
+    msg.style.borderColor = 'var(--red-d)';
+    msg.style.color = 'var(--reject)';
+    msg.textContent = '✕ Rejection logged · Letter generated · Treating physician notified · Case file updated.';
+  } else {
+    title.textContent = 'Referred to Medical Advisor';
+    icon.textContent = '⇄';
+    chip.textContent = 'Override: Analyst';
+    ref.textContent = 'Referral Ref: REF-2024-0042817-0089 · 2024-06-14 · Assigned: Dr. Clinical Advisor';
+    rationale.textContent = '"Case escalated to Medical Advisor by analyst override. All case documentation, decision trace, and clinical notes have been forwarded. Medical Advisor response expected within 24 hours per SLA."';
+    msg.style.display = 'block';
+    msg.style.background = 'var(--amber-bg)';
+    msg.style.borderColor = 'var(--amber-d)';
+    msg.style.color = 'var(--refer)';
+    msg.textContent = '⇄ Referral created · Assigned to Medical Advisor pool · Case file updated · SLA clock started.';
+  }
+}
+
+/* ─── INIT ─── */
+window.addEventListener('DOMContentLoaded', () => {
+  showStage(2);
+});
+</script>
+</body>
+</html>
