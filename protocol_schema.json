@@ -1,0 +1,232 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://medschm.co.za/schemas/protocol/v1.0",
+  "title": "ClinicalPath Protocol Rules Schema",
+  "description": "Schema for medical protocol decision rules extracted from OCR images. Used by STMpha PA decision engine.",
+  "version": "1.0.0",
+
+  "type": "object",
+  "required": ["protocol_id", "metadata", "eligibility", "icd10_codes", "basket_of_care", "decision_tree"],
+
+  "properties": {
+
+    "protocol_id": {
+      "type": "string",
+      "description": "Unique protocol identifier e.g. DTP-113S",
+      "pattern": "^[A-Z]{2,6}-[0-9]{3,6}[A-Z]?$"
+    },
+
+    "metadata": {
+      "type": "object",
+      "required": ["name", "condition_category", "version", "effective_date", "issuing_body", "source_images"],
+      "properties": {
+        "name":               { "type": "string" },
+        "condition_category": {
+          "type": "string",
+          "enum": ["haematology","oncology","endocrinology","cardiology","pulmonology",
+                   "nephrology","neurology","rheumatology","infectious_disease","general"]
+        },
+        "sub_category":       { "type": "string" },
+        "version":            { "type": "string" },
+        "effective_date":     { "type": "string", "format": "date" },
+        "issuing_body":       { "type": "string" },
+        "dtp_code":           { "type": "string", "description": "Disease Treatment Programme code" },
+        "source_images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "dbfs_path":    { "type": "string" },
+              "ocr_extracted": { "type": "string", "format": "date-time" },
+              "page_sequence": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+
+    "therapeutic_summary": {
+      "type": "string",
+      "description": "High-level clinical description extracted from Section 1 of the protocol"
+    },
+
+    "eligibility": {
+      "type": "object",
+      "required": ["registration_routes", "mandatory_criteria", "conditional_criteria", "rejection_criteria"],
+      "properties": {
+
+        "registration_routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "route": { "type": "string", "enum": ["telephonic","email","digital_platform","broker","hcp_initiated"] },
+              "description": { "type": "string" }
+            }
+          }
+        },
+
+        "mandatory_criteria": {
+          "type": "array",
+          "description": "ALL must be met for auto-approve",
+          "items": { "$ref": "#/definitions/criterion" }
+        },
+
+        "conditional_criteria": {
+          "type": "array",
+          "description": "Any triggered criterion escalates to Medical Advisor referral",
+          "items": { "$ref": "#/definitions/criterion" }
+        },
+
+        "rejection_criteria": {
+          "type": "array",
+          "description": "Any single criterion triggers immediate rejection",
+          "items": { "$ref": "#/definitions/criterion" }
+        },
+
+        "care_triggers": {
+          "type": "array",
+          "description": "Events that automatically trigger care template activation",
+          "items": {
+            "type": "object",
+            "properties": {
+              "trigger_type": {
+                "type": "string",
+                "enum": ["chronic_auth_success","claim_with_icd10","hospital_auth","clinical_motivation"]
+              },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "icd10_codes": {
+      "type": "array",
+      "description": "Applicable ICD-10 codes from protocol Section 3",
+      "items": {
+        "type": "object",
+        "required": ["code", "description"],
+        "properties": {
+          "code":         { "type": "string", "pattern": "^[A-Z][0-9]{2}(\\.[0-9]{1,2})?$" },
+          "description":  { "type": "string" },
+          "is_primary":   { "type": "boolean" },
+          "notes":        { "type": "string" }
+        }
+      }
+    },
+
+    "basket_of_care": {
+      "type": "object",
+      "description": "Care plan / treatment plan from protocol Section 4",
+      "required": ["care_items"],
+      "properties": {
+        "target_population": { "type": "string" },
+        "care_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["description", "discipline", "billing_codes"],
+            "properties": {
+              "description":    { "type": "string" },
+              "discipline":     { "type": "string" },
+              "billing_codes":  {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "quantity_per_year": { "type": "integer" },
+              "quantity_per_visit": { "type": "integer" },
+              "notes":          { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "decision_tree": {
+      "type": "object",
+      "required": ["entry_point", "nodes"],
+      "properties": {
+        "entry_point": { "type": "string", "description": "ID of the root node" },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/decision_node" }
+        }
+      }
+    },
+
+    "billing_rules": {
+      "type": "array",
+      "description": "Code-level billing conflict rules (mutually exclusive codes, ICU sequences, etc.)",
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "rule_type", "codes", "description"],
+        "properties": {
+          "rule_id":    { "type": "string" },
+          "rule_type":  { "type": "string", "enum": ["mutually_exclusive","sequence_required","max_frequency","requires_companion"] },
+          "codes":      { "type": "array", "items": { "type": "string" } },
+          "description": { "type": "string" },
+          "context":    { "type": "string", "enum": ["inpatient","outpatient","icu","any"] },
+          "max_per_admission": { "type": "integer" }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+
+    "criterion": {
+      "type": "object",
+      "required": ["criterion_id", "section_ref", "description", "criterion_type", "evaluation"],
+      "properties": {
+        "criterion_id":  { "type": "string" },
+        "section_ref":   { "type": "string", "description": "e.g. '2.1a' from protocol document" },
+        "description":   { "type": "string" },
+        "criterion_type": {
+          "type": "string",
+          "enum": ["boolean","numeric_threshold","enum_match","document_present","date_window","regex_match"]
+        },
+        "weight":        { "type": "string", "enum": ["critical","high","medium","low"] },
+        "evaluation": {
+          "type": "object",
+          "properties": {
+            "field":      { "type": "string", "description": "Case field name this maps to" },
+            "operator":   { "type": "string", "enum": ["eq","neq","gt","gte","lt","lte","in","not_in","present","regex"] },
+            "value":      {},
+            "unit":       { "type": "string" },
+            "within_days":{ "type": "integer", "description": "For date_window type: document must be within N days" }
+          }
+        },
+        "failure_message": { "type": "string" },
+        "requires_document": { "type": "string" }
+      }
+    },
+
+    "decision_node": {
+      "type": "object",
+      "required": ["node_id", "node_type", "label"],
+      "properties": {
+        "node_id":    { "type": "string" },
+        "node_type":  { "type": "string", "enum": ["entry","condition","outcome","gate"] },
+        "label":      { "type": "string" },
+        "description": { "type": "string" },
+        "criteria_refs": { "type": "array", "items": { "type": "string" } },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "condition": { "type": "string" },
+              "next_node":  { "type": "string" }
+            }
+          }
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["APPROVE","REJECT","REFER_MEDICAL_ADVISOR"]
+        },
+        "outcome_message": { "type": "string" }
+      }
+    }
+  }
+}
