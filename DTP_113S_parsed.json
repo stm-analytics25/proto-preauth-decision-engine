@@ -1,0 +1,303 @@
+{
+  "protocol_id": "DTP-113S",
+  "metadata": {
+    "name": "Acquired Haemolytic Anaemia",
+    "condition_category": "haematology",
+    "sub_category": "acquired_haemolytic_anaemia",
+    "version": "1.0",
+    "effective_date": "2025-01-01",
+    "issuing_body": "STMpha Clinical Advisory Board",
+    "dtp_code": "DTP-113S",
+    "source_images": [
+      {
+        "dbfs_path": "dbfs:/mnt/bronze/protocol/20250805_092107.jpg",
+        "ocr_extracted": "2025-08-05T09:21:07",
+        "page_sequence": 1
+      },
+      {
+        "dbfs_path": "dbfs:/mnt/bronze/protocol/20250805_092344.jpg",
+        "ocr_extracted": "2025-08-05T09:23:44",
+        "page_sequence": 2
+      }
+    ]
+  },
+
+  "therapeutic_summary": "Haemolytic anaemia is a form of anaemia due to haemolysis — the abnormal breakdown of red blood cells (RBC) either in the blood vessels (intravascular haemolysis) or elsewhere in the body (extravascular). Acquired haemolytic anaemia may be caused by immune-mediated causes, drugs, infections, burns, lead poisoning, or mechanical causes such as prosthetic heart valves. Symptoms include fatigue, shortness of breath, jaundice, and increased risk of gallstones and pulmonary hypertension. Treatment depends on cause and nature of breakdown.",
+
+  "eligibility": {
+    "registration_routes": [
+      { "route": "telephonic",       "description": "Section 1.3.1 — Telephonic registration" },
+      { "route": "email",            "description": "Section 1.3.2 — E-mail registration" },
+      { "route": "digital_platform", "description": "Section 1.3.3 — Website or application" },
+      { "route": "hcp_initiated",    "description": "Section 1.2 — GP, specialist, pharmacist or broker may register on member's behalf" }
+    ],
+
+    "mandatory_criteria": [
+      {
+        "criterion_id": "MC-001",
+        "section_ref": "1.1",
+        "description": "Member is registered on the chronic medicine programme or registration is initiated by an authorised HCP or broker",
+        "criterion_type": "boolean",
+        "weight": "critical",
+        "evaluation": { "field": "member_registered", "operator": "eq", "value": true },
+        "failure_message": "Member is not registered on the chronic medicine programme. Registration must occur before authorisation can be issued.",
+        "requires_document": null
+      },
+      {
+        "criterion_id": "MC-002",
+        "section_ref": "3.0",
+        "description": "Diagnosis confirmed with an applicable ICD-10 code from the protocol list (D59.0–D59.9)",
+        "criterion_type": "enum_match",
+        "weight": "critical",
+        "evaluation": {
+          "field": "icd10_code",
+          "operator": "in",
+          "value": ["D59.0","D59.1","D59.3","D59.4","D59.5","D59.8","D59.9"]
+        },
+        "failure_message": "The submitted ICD-10 code does not match any applicable code under DTP-113S (Acquired Haemolytic Anaemia). Codes D59.0–D59.9 are applicable.",
+        "requires_document": "clinical_diagnosis_letter"
+      },
+      {
+        "criterion_id": "MC-003",
+        "section_ref": "1.4",
+        "description": "Confirmation of chronic medicine authorisation received by member",
+        "criterion_type": "boolean",
+        "weight": "high",
+        "evaluation": { "field": "chronic_auth_confirmed", "operator": "eq", "value": true },
+        "failure_message": "Chronic medicine authorisation confirmation has not been issued. Member cannot access benefits until confirmation is received.",
+        "requires_document": null
+      },
+      {
+        "criterion_id": "MC-004",
+        "section_ref": "4.0",
+        "description": "Treating practitioner is a General Practitioner or Physician/Paediatrician with valid HPCSA registration",
+        "criterion_type": "enum_match",
+        "weight": "critical",
+        "evaluation": {
+          "field": "treating_practitioner_discipline",
+          "operator": "in",
+          "value": ["general_practitioner","physician","paediatrician","specialist_physician","haematologist"]
+        },
+        "failure_message": "Treating practitioner discipline is not aligned to the approved disciplines for DTP-113S. A GP, physician, paediatrician, or haematologist is required.",
+        "requires_document": "hpcsa_registration"
+      }
+    ],
+
+    "conditional_criteria": [
+      {
+        "criterion_id": "CC-001",
+        "section_ref": "1.5.4",
+        "description": "Clinical motivation submitted manually — triggers Medical Advisor review for non-standard care plan requests",
+        "criterion_type": "boolean",
+        "weight": "high",
+        "evaluation": { "field": "clinical_motivation_submitted", "operator": "eq", "value": true },
+        "failure_message": null
+      },
+      {
+        "criterion_id": "CC-002",
+        "section_ref": "2.0",
+        "description": "Haemolytic anaemia caused by immune-mediated or drug-related factors requiring specialist haematologist review",
+        "criterion_type": "enum_match",
+        "weight": "high",
+        "evaluation": {
+          "field": "icd10_code",
+          "operator": "in",
+          "value": ["D59.0","D59.1"]
+        },
+        "failure_message": null
+      },
+      {
+        "criterion_id": "CC-003",
+        "section_ref": "2.0",
+        "description": "Member has comorbid autoimmune condition (SLE, CLL) requiring multidisciplinary review",
+        "criterion_type": "boolean",
+        "weight": "medium",
+        "evaluation": { "field": "comorbid_autoimmune", "operator": "eq", "value": true },
+        "failure_message": null
+      }
+    ],
+
+    "rejection_criteria": [
+      {
+        "criterion_id": "RC-001",
+        "section_ref": "3.0",
+        "description": "ICD-10 code submitted is outside the applicable DTP-113S code range entirely",
+        "criterion_type": "enum_match",
+        "weight": "critical",
+        "evaluation": {
+          "field": "icd10_code",
+          "operator": "not_in",
+          "value": ["D59.0","D59.1","D59.3","D59.4","D59.5","D59.8","D59.9"]
+        },
+        "failure_message": "Rejected: Submitted diagnosis code is not applicable under DTP-113S. Please resubmit with the correct ICD-10 code or an appropriate protocol."
+      },
+      {
+        "criterion_id": "RC-002",
+        "section_ref": "1.1",
+        "description": "Member has no valid scheme membership at date of request",
+        "criterion_type": "boolean",
+        "weight": "critical",
+        "evaluation": { "field": "active_membership", "operator": "eq", "value": false },
+        "failure_message": "Rejected: Member does not have an active scheme membership. Authorisation cannot be issued without valid membership."
+      },
+      {
+        "criterion_id": "RC-003",
+        "section_ref": "4.0",
+        "description": "Requested care items fall outside the approved basket of care for DTP-113S",
+        "criterion_type": "boolean",
+        "weight": "high",
+        "evaluation": { "field": "care_items_in_basket", "operator": "eq", "value": false },
+        "failure_message": "Rejected: Requested care items are not included in the approved basket of care for DTP-113S. A clinical motivation must be submitted separately."
+      }
+    ],
+
+    "care_triggers": [
+      { "trigger_type": "chronic_auth_success",   "description": "Section 1.5.1 — Automatically on successful chronic medicine authorisation" },
+      { "trigger_type": "claim_with_icd10",        "description": "Section 1.5.2 — Upon claim submission with correct diagnostic code" },
+      { "trigger_type": "hospital_auth",           "description": "Section 1.5.3 — Triggered upon hospital authorisation" },
+      { "trigger_type": "clinical_motivation",     "description": "Section 1.5.4 — Manually upon submission of a clinical motivation" }
+    ]
+  },
+
+  "icd10_codes": [
+    { "code": "D59.0", "description": "Drug-induced autoimmune haemolytic anaemia",                         "is_primary": true  },
+    { "code": "D59.1", "description": "Other autoimmune haemolytic anaemias",                               "is_primary": true  },
+    { "code": "D59.3", "description": "Drug-induced nonautoimmune haemolytic anaemia",                      "is_primary": true  },
+    { "code": "D59.4", "description": "Other nonautoimmune haemolytic anaemias / Haemolytic-uraemic syndrome","is_primary": true  },
+    { "code": "D59.5", "description": "Paroxysmal nocturnal haemoglobinuria (Marchiafava-Micheli)",         "is_primary": true  },
+    { "code": "D59.8", "description": "Other acquired haemolytic anaemias",                                  "is_primary": true  },
+    { "code": "D59.9", "description": "Acquired haemolytic anaemia, unspecified",                            "is_primary": true  }
+  ],
+
+  "basket_of_care": {
+    "target_population": "Stable, uncomplicated patients already on treatment",
+    "care_items": [
+      {
+        "description": "General Practitioner consultation",
+        "discipline": "general_practitioner",
+        "billing_codes": ["0190","0191","0192"],
+        "quantity_per_year": null,
+        "notes": "Standard consultation codes 14.15 and 18.32 applicable"
+      },
+      {
+        "description": "Physician or Paediatrician consultation",
+        "discipline": "physician_paediatrician",
+        "billing_codes": ["3709"],
+        "quantity_per_year": 1,
+        "notes": "Annual specialist review"
+      },
+      {
+        "description": "Urine dipstick per stick",
+        "discipline": "pathology",
+        "billing_codes": ["4188"],
+        "quantity_per_year": null,
+        "notes": "Per stick, multiple per year permitted"
+      },
+      {
+        "description": "Antinuclear antibodies (ANF)",
+        "discipline": "pathology",
+        "billing_codes": ["3934"],
+        "quantity_per_year": 2,
+        "notes": null
+      },
+      {
+        "description": "Antiglobulin test — Coombs",
+        "discipline": "pathology",
+        "billing_codes": ["3928"],
+        "quantity_per_year": 2,
+        "notes": "Direct and indirect Coombs test"
+      },
+      {
+        "description": "Antimicrobial substances / Bacteriological culture",
+        "discipline": "pathology",
+        "billing_codes": ["3893","0887","3922"],
+        "quantity_per_year": null,
+        "notes": null
+      },
+      {
+        "description": "Miscellaneous body fluids / Full blood count",
+        "discipline": "pathology",
+        "billing_codes": ["1059"],
+        "quantity_per_year": 2,
+        "notes": "Includes FBC with differential"
+      },
+      {
+        "description": "Protein electrophoresis",
+        "discipline": "pathology",
+        "billing_codes": ["3922"],
+        "quantity_per_year": 2,
+        "notes": null
+      }
+    ]
+  },
+
+  "decision_tree": {
+    "entry_point": "NODE-001",
+    "nodes": [
+      {
+        "node_id": "NODE-001",
+        "node_type": "entry",
+        "label": "Pre-Auth Request Received",
+        "description": "DTP-113S — Acquired Haemolytic Anaemia authorisation request initiated",
+        "criteria_refs": [],
+        "branches": [
+          { "condition": "always",     "next_node": "NODE-002" }
+        ]
+      },
+      {
+        "node_id": "NODE-002",
+        "node_type": "gate",
+        "label": "Check Rejection Criteria",
+        "description": "Evaluate all RC criteria. Any single match triggers immediate rejection.",
+        "criteria_refs": ["RC-001","RC-002","RC-003"],
+        "branches": [
+          { "condition": "any_rejection_met", "next_node": "NODE-REJECT" },
+          { "condition": "no_rejection",      "next_node": "NODE-003"    }
+        ]
+      },
+      {
+        "node_id": "NODE-003",
+        "node_type": "gate",
+        "label": "Check All Mandatory Criteria",
+        "description": "All MC criteria must be satisfied. Failure on any single criterion triggers rejection.",
+        "criteria_refs": ["MC-001","MC-002","MC-003","MC-004"],
+        "branches": [
+          { "condition": "any_mandatory_failed", "next_node": "NODE-REJECT"  },
+          { "condition": "all_mandatory_met",    "next_node": "NODE-004"     }
+        ]
+      },
+      {
+        "node_id": "NODE-004",
+        "node_type": "condition",
+        "label": "Check Conditional / Referral Criteria",
+        "description": "Evaluate conditional criteria. Any match escalates to Medical Advisor.",
+        "criteria_refs": ["CC-001","CC-002","CC-003"],
+        "branches": [
+          { "condition": "any_conditional_triggered", "next_node": "NODE-REFER"   },
+          { "condition": "no_conditional_triggered",  "next_node": "NODE-APPROVE" }
+        ]
+      },
+      {
+        "node_id": "NODE-APPROVE",
+        "node_type": "outcome",
+        "label": "Approve Pre-Authorisation",
+        "outcome": "APPROVE",
+        "outcome_message": "All mandatory criteria satisfied under DTP-113S. No conditional flags triggered. Pre-authorisation approved for chronic medicine and care plan benefits."
+      },
+      {
+        "node_id": "NODE-REFER",
+        "node_type": "outcome",
+        "label": "Refer to Medical Advisor",
+        "outcome": "REFER_MEDICAL_ADVISOR",
+        "outcome_message": "Mandatory criteria met but one or more conditional criteria require Medical Advisor review. Case escalated with full clinical documentation."
+      },
+      {
+        "node_id": "NODE-REJECT",
+        "node_type": "outcome",
+        "label": "Reject Pre-Authorisation",
+        "outcome": "REJECT",
+        "outcome_message": "Pre-authorisation rejected. One or more mandatory or rejection criteria were not satisfied. Rejection letter generated with clinical rationale."
+      }
+    ]
+  }
+}
