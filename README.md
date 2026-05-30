@@ -1,4 +1,7 @@
 Here's the pipeline end-to-end in 12 clean steps:
+
+file:///C:/Users/SamuelPhiri/Downloads/preauth_pipeline_architecture.svg
+
 What each step does:
 Step  What happens
 
